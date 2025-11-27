@@ -4,14 +4,14 @@ import csv
 from collections import defaultdict, Counter
 
 def load_setups_and_csv(zip_path):
-    setups = []
-    telemetry = {}
+    acc_setups = []
+    motec_telemetry = {}
 
     with zipfile.ZipFile(zip_path, "r") as z:
         for file_name in z.namelist():
             if file_name.endswith(".json"):
-                with z.open(file_name) as f:
-                    setups.append(json.load(f))
+                data = z.read(file_name)
+                acc_setups.append(json.loads(data.decode("utf-8")))
             elif file_name.endswith(".csv"):
                 with z.open(file_name) as f:
                     reader = csv.DictReader(line.decode("utf-8") for line in f)
@@ -19,32 +19,32 @@ def load_setups_and_csv(zip_path):
                     for row in reader:
                         corner_id = row.get("corner_id")
                         if corner_id:
-                            telemetry[corner_id] = {
+                            motec_telemetry[corner_id] = {
                                 "sector_time": float(row.get("sector_time", 0)),
                                 "lap_delta": float(row.get("lap_delta", 0))
                             }
-    return setups, telemetry
+    return acc_setups, motec_telemetry
 
-def derive_corner_weights(setups, telemetry):
+def derive_corner_weights(acc_setups, motec_telemetry):
     """
     Assign weights to each setup based on telemetry data.
     Example: slower corners (higher sector_time) get more weight.
     """
     weights = []
-    for setup in setups:
+    for setup in acc_setups:
         corner_id = setup.get("corner_id")
-        if corner_id and corner_id in telemetry:
-            sector_time = telemetry[corner_id]["sector_time"]
+        if corner_id and corner_id in motec_telemetry:
+            sector_time = motec_telemetry[corner_id]["sector_time"]
             # Weight = sector_time normalized (higher time = more important)
             weights.append(sector_time)
         else:
             weights.append(1.0)  # default if no telemetry match
     return weights
 
-def aggregate_setups(setups, corner_weights):
+def aggregate_setups(acc_setups, acc_corner_weights):
     aggregated = defaultdict(list)
 
-    for setup, weight in zip(setups, corner_weights):
+    for setup, weight in zip(acc_setups, acc_corner_weights):
         for key, value in setup.items():
             if key == "corner_id":  # skip metadata
                 continue
