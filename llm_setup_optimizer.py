@@ -1,94 +1,101 @@
-"""
-LLM Setup Optimizer for ACC AI Project
---------------------------------------
-Combines telemetry metrics + current setup into a prompt,
-queries an LLM for optimized setup recommendations,
-and saves the updated setup JSON.
-"""
-
 import json
+import pandas as pd
+import argparse
+import glob
 from pathlib import Path
-from typing import Dict, Any
-
-# Example: using LangChain with OpenAI
-from langchain.prompts import PromptTemplate
-from langchain.llms import OpenAI
-from langchain.output_parsers import JsonOutputParser
+from openai import OpenAI
+from openai.types.chat import ChatCompletionMessageParam
 
 
-class LLMSetupOptimizer:
-    def __init__(self, metrics_path: str, setup_path: str, output_path: str):
-        self.metrics_path = Path(metrics_path)
-        self.setup_path = Path(setup_path)
-        self.output_path = Path(output_path)
+# --- LOAD CORNER FILES ---
+def load_corner_files(output_prefix: str) -> list[tuple[str, pd.DataFrame]]:
+    """
+    Load all corner CSV files exported by adaptive_corner_split.
+    Returns list of (filename, DataFrame).
+    """
+    files = sorted(glob.glob(f"{output_prefix}_corner*.csv"))
+    if not files:
+        raise FileNotFoundError(f"No corner CSV files found with prefix '{output_prefix}_corner'")
 
-        self.metrics = self._load_json(self.metrics_path)
-        self.setup = self._load_json(self.setup_path)
+    return [(f, pd.read_csv(f)) for f in files]
 
-        # Initialize LLM (replace with your provider: OpenAI, Anthropic, Mistral, etc.)
-        self.llm = OpenAI(model="gpt-4", temperature=0)
 
-    def _load_json(self, path: Path) -> Dict[str, Any]:
-        with open(path, "r") as f:
-            return json.load(f)
+# --- LLM QUERY ---
+def query_llm_for_corner(corner_df: pd.DataFrame, base_setup: dict) -> dict:
+    """
+    Send telemetry for one corner + base setup to LLM, get recommended changes.
+    """
+    client = OpenAI()
 
-    def _save_json(self, data: Dict[str, Any], path: Path) -> None:
-        with open(path, "w") as f:
-            json.dump(data, f, indent=4)
+    telemetry_summary = corner_df.describe().to_string()
 
-    def build_prompt(self) -> str:
-        return f"""
-You are an expert race engineer for Assetto Corsa Competizione (ACC).
-Analyze telemetry metrics and propose optimized car setup changes.
+    prompt = f"""
+    You are an expert race engineer for ACC.
+    Analyze the following telemetry data and the current setup.
+    Suggest specific setup changes (e.g., camber, toe, dampers, ride height) 
+    that would improve performance.
 
-Telemetry Metrics:
-{json.dumps(self.metrics, indent=4)}
+    IMPORTANT:
+    - Output ONLY a JSON object containing ONLY the changed parameters.
+    - Do not repeat unchanged values.
+    - Keep the schema consistent with ACC setup.json format.
 
-Current Car Setup:
-{json.dumps(self.setup, indent=4)}
+    Telemetry summary:
+    {telemetry_summary}
 
-Instructions:
-- Recommend changes to tyre pressures, suspension, aero balance, dampers, and alignment if needed.
-- Output ONLY a JSON object with the updated setup values.
-- Include a short explanation for each change in a field called "rationale".
-"""
+    Current setup:
+    {json.dumps(base_setup, indent=2)}
+    """
 
-    def run(self) -> None:
-        # Build prompt
-        prompt_text = self.build_prompt()
+    messages: list[ChatCompletionMessageParam] = [
+        {"role": "system", "content": "You are an expert race engineer for ACC."},
+        {"role": "user", "content": prompt}
+    ]
 
-        # Define parser
-        parser = JsonOutputParser()
+    response = client.chat.completions.create(
+        model="gpt-4.1",
+        messages=messages,
+        temperature=0.2
+    )
 
-        # Wrap in LangChain PromptTemplate
-        prompt = PromptTemplate(
-            template=prompt_text,
-            input_variables=[],
-            output_parser=parser,
-        )
+    msg_content = response.choices[0].message.content
 
-        # Query LLM
-        response = self.llm(prompt.format())
+    try:
+        changes = json.loads(msg_content)
+    except json.JSONDecodeError:
+        raise ValueError(f"Invalid JSON returned:\n{msg_content}")
 
-        # Parse JSON output
-        try:
-            updated_setup = parser.parse(response)
-        except Exception as e:
-            raise RuntimeError(f"Failed to parse LLM output: {e}\nRaw output:\n{response}")
+    return changes
 
-        # Save updated setup
-        self._save_json(updated_setup, self.output_path)
 
-        print("✅ Updated setup saved to", self.output_path)
-        print("Changes rationale:")
-        for k, v in updated_setup.get("rationale", {}).items():
-            print(f" - {k}: {v}")
+# --- MAIN PIPELINE ---
+def main():
+    parser = argparse.ArgumentParser(description="ACC Telemetry → LLM → Corner-by-Corner Setup Optimizer")
+    parser.add_argument("--setup", required=True, help="Path to initial setup JSON file")
+    parser.add_argument("--prefix", required=True, help="Output prefix used by corner splitter (e.g. Valencia1)")
+    parser.add_argument("--output", default="corner_changes.json", help="File to save per-corner changes")
+    args = parser.parse_args()
+
+    # Load base setup
+    with open(args.setup, "r") as f:
+        base_setup = json.load(f)
+
+    # Load corner files
+    corner_files = load_corner_files(args.prefix)
+
+    # Collect changes per corner
+    all_changes = {}
+    for f, df in corner_files:
+        print(f"🔍 Processing {Path(f).name}...")
+        changes = query_llm_for_corner(df, base_setup)
+        all_changes[Path(f).stem] = changes
+
+    # Save all corner changes to JSON
+    with open(args.output, "w") as f_out:
+        json.dump(all_changes, f_out, indent=2)
+
+    print(f"✅ Per-corner changes saved to {args.output}")
 
 
 if __name__ == "__main__":
-    optimizer = LLMSetupOptimizer(
-        metrics_path="data/metrics.json",
-        setup_path="configs/current_setup.json",
-        output_path="configs/optimized_setup.json"
-    )
-    optimizer.run()
+    main()
