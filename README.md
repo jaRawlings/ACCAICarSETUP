@@ -1,66 +1,72 @@
-# ACC AI Setup Optimizer (MoTeC + LangChain)
+# MoTeC CSV Splitter & Corner Detection for ACC
 
-## Overview
-**ACC AI Setup Optimizer** applies **large language models (LLMs)** to **motorsport telemetry analysis**.  
-It ingests **MoTeC telemetry data** from Assetto Corsa Competizione (ACC), compares it with the current car setup, and recommends optimized parameters.
-
-The workflow showcases **LangChain prompt orchestration** and **AI reasoning** for **iterative optimization**.
+This project provides a Python utility to process **MoTeC telemetry exports** from Assetto Corsa Competizione (ACC).  
+It automatically splits a lap into **corner-by-corner CSV files** or annotates the full lap with corner/straight segments, enabling deeper analysis of car setup, driver inputs, and vehicle dynamics.
 
 ---
 
 ## Features
-- **Telemetry parsing:** Extracts tyre pressures/temps, suspension travel, aero balance, ride height, and damper histograms from MoTeC CSV/LOG.
-- **Rule‑based optimizer:** Compares metrics against thresholds and updates the car setup JSON.
-- **LLM integration:** Generates prompts, queries an LLM, and writes back updated setup JSON with rationales.
-- **Iterative loop:** Test → Analyze → Adjust → Repeat.
-- **Structured outputs:** Consistent JSON schema for telemetry, setup, and recommendations.
+- Robust CSV loader: Handles MoTeC metadata and normalizes headers.
+- Corner detection: Uses steering angle and lateral G-force to identify corners dynamically.
+- Adaptive thresholds: Specify the expected number of turns, and the script iteratively adjusts detection thresholds until it matches.
+- Exports per corner: Generates individual CSV files for each detected corner.
+- Recruiter-friendly design: Clean modular functions (`load_motec_rows`, `detect_corners`, `adaptive_corner_split`) for easy extension.
 
 ---
 
-## Tech stack
-- **Python** for data parsing and orchestration  
-- **LangChain** for prompt workflows and agent integration  
-- **LLMs** (OpenAI / Claude / Mistral) for reasoning  
-- **MoTeC i2 Pro** telemetry exports (CSV/LOG)  
-- **JSON setup files** for ACC configuration
+## Project Structure
+MotecCSVSplitter.py <br>
+Main script README.md <br>
+Documentation
 
 ---
 
-## How it works
-1. Export session telemetry from ACC via **MoTeC i2 Pro**.
-2. Run `motec_data_pipeline.py` to parse telemetry → outputs `data/metrics.json`.
-3. Run `setup_optimizer.py` to apply rule-based changes → outputs `configs/optimized_setup.json`.
-4. Run `llm_setup_optimizer.py` to generate an LLM prompt, query the model, and update the setup with rationales.
-5. Apply changes in ACC and repeat testing.
+## Usage
 
----
+### 1. Install Requirements
+This script uses only Python’s standard library (`csv`), so no external dependencies are required.
 
-## Repository structure
+### 2. Run in PyCharm or CLI
+```bash
+python MotecCSVSplitter.py
+``` 
+### 3. Configure Parameters
+In the main block of MotecCSVSplitter.py, set:
+```python
+adaptive_corner_split(
+    input_csv="Your_motec_scv_file.csv",
+    output_prefix="your_output_Prefix",
+    target_turns=14   # expected number of corners at Valencia
+)
+```
+### 4 Outputs
+Individual corner files:
+``` bash
+your_output_Prefix_corner1.csv
+your_output_Prefix_corner2.csv
+...
+```
+Console summary of iterations and detected corners.
 
----
+## How Corner Detection Works
+Steering angle (STEERANGLE) and lateral G (G_LAT) are monitored.
 
-## Quick start
-- **Install dependencies:** `pip install -r requirements.txt`
-- **Parse telemetry:** `python src/motec_data_pipeline.py`
-- **Rule-based optimize:** `python src/setup_optimizer.py`
-- **LLM optimize:** `python src/llm_setup_optimizer.py`
+Consecutive rows above thresholds are grouped into corners.
 
----
+Adaptive mode adjusts thresholds until the number of detected corners matches the expected track layout.
 
-## Roadmap
-- Add **memory** for cross‑session learning
-- Integrate a **vector database** for trend storage
-- Build a **UI dashboard** for visualization
-- Extend to other sims (iRacing, rFactor 2)
+## Next Steps
+Add combined CSV export with a SegmentType column (corner / straight).
 
----
+Extend metrics: average steering angle, entry/exit speed, oversteer angle replication.
 
-## Contributing
-- **Fork** the repo
-- **Create** a feature branch
-- **Submit** a pull request
-
----
+Integrate with AI setup optimization pipeline.
 
 ## License
-MIT License – free to use, modify, and distribute.
+MIT License — feel free to use, modify, and contribute.
+
+Contributing
+Pull requests are welcome! For major changes, open an issue first to discuss what you’d like to improve.
+
+## Author
+Developed by John, motorsport enthusiast and AI workflow engineer. Focused on blending data-driven car setup optimization with open-source polish.
