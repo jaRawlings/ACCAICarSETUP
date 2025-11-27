@@ -1,78 +1,85 @@
 # MoTeC CSV Splitter & Setup Aggregator for ACC
 
-This project provides a Python utility to process **MoTeC telemetry exports** and **corner-specific setup files** from Assetto Corsa Competizione (ACC).  
-It automatically splits a lap into **corner-by-corner CSV files**, annotates the full lap with corner/straight segments, and aggregates multiple setup JSONs into a single compromise setup using telemetry-derived weights.  
-The goal is to bridge raw motorsport data with **AI-assisted car setup optimization**.
+This project processes **MoTeC telemetry exports** and **corner-specific setup files** from Assetto Corsa Competizione (ACC).  
+It can split a lap into **corner-by-corner CSV files**, annotate a full lap with corner/straight segments, and aggregate multiple setup JSONs into a single compromise setup using telemetry-derived weights.
 
 ---
 
 ## Features
 - **Robust CSV loader**: Handles MoTeC metadata and normalizes headers.
 - **Corner detection**: Uses steering angle and lateral G-force to identify corners dynamically.
-- **Adaptive thresholds**: Iteratively adjusts detection thresholds until the number of detected corners matches the expected track layout.
-- **Per-corner exports**: Generates individual CSV files for each detected corner.
-- **Zip ingestion**: Reads both setup JSON files and MoTeC CSV telemetry directly from `.zip` archives.
-- **Setup aggregation**: Combines corner-specific setups into a master compromise setup, weighted by sector times or lap deltas.
-- **Recruiter-friendly design**: Clean modular functions (`load_motec_rows`, `detect_corners`, `aggregate_setups`) for easy extension and demonstration of workflow skills.
+- **Adaptive thresholds (WIP)**: Iteratively tunes thresholds to match the expected track corner count.
+- **Per-corner exports**: Generates individual CSVs for each detected corner.
+- **Zip ingestion**: Reads setup JSONs and MoTeC CSV telemetry directly from `.zip`.
+- **Setup aggregation**: Produces a master compromise setup from corner-specific JSONs, weighted by sector times or lap deltas.
 
 ---
 
 ## Project Structure
-- `MotecCSVSplitter.py` — main corner detection and CSV processing script  
-- `SetupAggregator.py` — JSON + CSV ingestion and compromise setup generation  
-- `README.md` — project overview and usage guide  
-- `ROADMAP.md` — planned development and future direction  
-- `docs/` — extended documentation and examples  
+- `MotecCSVSplitter.py` — corner detection and CSV processing
+- `SetupAggregator.py` — JSON + CSV ingestion (from zip) and compromise setup generation
+- `README.md` — project overview and usage guide
+- `ROADMAP.md` — development plan
+- `docs/` — extended documentation and examples
 
 ---
 
 ## Usage
 
-### 1. Install Requirements
-This project uses only Python’s standard library (`csv`, `json`, `zipfile`), so no external dependencies are required.
+### 1. Split MoTeC CSV into per-corner files
+Run the splitter script with your input CSV. The script will output corner CSVs and a console summary.
 
-### 2. Run in PyCharm or CLI
 ```bash
-python MotecCSVSplitter.py
+python MotecCSVSplitter.py --input path/to/your_motec.csv --output-prefix output/run1
+```
+### Expected outputs:
+```bash
+output/run1_corner1.csv
+output/run1_corner2.csv
 ```
 
-### 3. Configure Parameters
-In the main block of MotecCSVSplitter.py, set:
+### Console summary of detected corners
+If your script currently uses hardcoded paths in if __name__ == "__main__":, set:
 ```python
-adaptive_corner_split(
-    input_csv="Your_motec_csv_file.csv",
-    output_prefix="your_output_prefix",
-    target_turns=14   # expected number of corners at Valencia
-)
-
+INPUT_CSV = "path/to/your_motec.csv"
+OUTPUT_PREFIX = "output/run1"
 ```
-### 4. Outputs
-- Individual corner files:
+## 2. Aggregate corner setups using telemetry weights
+Bundle your corner setup JSONs and the MoTeC CSV into a single zip, then run the aggregator:
 ```bash
-your_output_prefix_corner1.csv
-your_output_prefix_corner2.csv
-...
+python SetupAggregator.py --zip path/to/corner_setups_and_motec.zip --out master_setup.json
 ```
-- Console summary of iterations and detected corners.
+The zip should contain:
+- corner_*.json files (one per corner)
+- A MoTeC telemetry CSV (e.g., session.csv)
 
-- master_setup.json compromise setup generated from JSON + CSV data.
+The aggregator will:
+- Load JSONs and the CSV from the zip
+- Derive corner weights from sector times or lap deltas in the CSV
+- Output master_setup.json
 
-### How Corner Detection & Aggregation Work
-- **Corner detection:** Steering angle (STEERANGLE) and lateral G (G_LAT) are monitored. Consecutive rows above thresholds are grouped into corners. Adaptive mode adjusts thresholds until the number of detected corners matches the expected track layout.
+---
 
-- **Setup aggregation:** Each corner’s setup JSON is weighted by its lap-time impact (from MoTeC CSV sector times). Numeric parameters are averaged with weights; categorical parameters use majority vote. The result is a balanced master setup.
+### How It Works
+- **Corner detection:** Monitors steering angle (STEERANGLE) and lateral G (G_LAT). Consecutive rows over thresholds form corners. Adaptive tuning (if enabled) adjusts thresholds to better match the track’s corner count.
 
-### Next Steps
-- Add combined CSV export with a SegmentType column (corner / straight).
-- Extend metrics: average steering angle, entry/exit speed, oversteer angle replication, handling balance analysis.
-- Visualization tools: plots for corner speeds, steering traces, and G-force maps.
-- AI integration: connect telemetry outputs to LangChain pipelines for automated setup recommendations.
-
+- *Setup aggregation:*
+  - Numeric parameters → weighted averages (weights from sector times/lap deltas)
+  - Categorical parameters → majority vote
+  -Outputs a balanced master_setup.json
+---
+### Roadmap Highlights
+- Unified CSV export with SegmentType (corner/straight)
+- Corner summaries (duration, avg steering angle, entry/exit speeds, lap deltas)
+- Advanced metrics: oversteer angle replication, handling balance analysis
+- Visualization (corner speeds, steering traces, G-force maps)
+- AI integration (LangChain) for automated setup recommendations
+---
 ### License
-MIT License — feel free to use, modify, and contribute.
-
+MIT License — use, modify, and contribute freely.
+---
 ### Contributing
-Pull requests are welcome! For major changes, open an issue first to discuss what you’d like to improve. Contributors are encouraged to add track profiles, new metrics, or AI workflow integrations.
-
+Pull requests welcome. For major changes, open an issue to discuss design and interfaces. Track profiles, metrics, and AI workflow integrations are great contributions.
+---
 ### Author
-Developed by John, motorsport enthusiast and AI workflow engineer. Focused on blending data-driven car setup optimization with open-source polish and recruiter-friendly workflows.
+Developed by John, motorsport enthusiast and AI workflow engineer, focused on data-driven setup optimization with open-source polish.
