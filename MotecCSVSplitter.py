@@ -1,4 +1,6 @@
 import csv
+import zipfile
+import os
 
 def load_motec_rows(input_csv):
     with open(input_csv, newline='') as f:
@@ -67,6 +69,7 @@ def detect_corners(rows, steer_threshold, g_lat_threshold, min_duration):
 
 
 def export_corners(corners, header, output_prefix):
+    exported_files = []
     for idx, corner_rows in corners:
         out_file = f"{output_prefix}_corner{idx}.csv"
         with open(out_file, "w", newline='') as f_out:
@@ -74,6 +77,17 @@ def export_corners(corners, header, output_prefix):
             writer.writeheader()
             writer.writerows(corner_rows)
         print(f"Exported corner {idx} with {len(corner_rows)} rows to {out_file}")
+        exported_files.append(out_file)
+    return exported_files
+
+
+def zip_corners(files, zip_name):
+    """Bundle all exported corner CSVs into a single ZIP archive."""
+    with zipfile.ZipFile(zip_name, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for file in files:
+            arcname = os.path.basename(file)  # store only filename inside zip
+            zipf.write(file, arcname)
+    print(f"Created ZIP archive: {zip_name}")
 
 
 def adaptive_corner_split(input_csv, output_prefix, target_turns):
@@ -90,8 +104,10 @@ def adaptive_corner_split(input_csv, output_prefix, target_turns):
         print(f"Iteration {iteration}: steer={steer_threshold:.3f}, g_lat={g_lat_threshold:.3f}, min_dur={min_duration:.3f} -> {count} corners")
 
         if count == target_turns:
-            export_corners(corners, header, output_prefix)
-            print(f"✅ Matched target of {target_turns} turns.")
+            exported_files = export_corners(corners, header, output_prefix)
+            zip_name = f"{output_prefix}_corners.zip"
+            zip_corners(exported_files, zip_name)
+            print(f"Matched target of {target_turns} turns.")
             return
 
         if count < target_turns:
@@ -103,7 +119,7 @@ def adaptive_corner_split(input_csv, output_prefix, target_turns):
             g_lat_threshold *= 1.2
             min_duration *= 1.2
 
-    print(f"⚠️ Could not converge to {target_turns} turns after 50 iterations. Last count={count}")
+    print(f"Could not converge to {target_turns} turns after 50 iterations. Last count={count}")
 
 
 # ---------------- MAIN ----------------
